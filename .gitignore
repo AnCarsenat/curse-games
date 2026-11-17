@@ -1,2 +1,4 @@
 __pycache__/
 *.pyc
+games/artillery_keys.json
+games/artillery_save.json*

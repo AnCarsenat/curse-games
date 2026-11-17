@@ -149,13 +149,21 @@ def base_height(x, y):
             + (c1[j] * (1 - ty) + c1[j + 1] * ty) * tx)
 
 
-_pending = set()   # chunks the view wants; generated a few per frame
+_pending = set()   # chunks the view wants; generated a little per frame
+_partial = {}      # chunk -> columns generated so far (background generation)
+
+
+def _column(bx, by, i):
+    return [raw_height((bx + i) * BASE_CELL, (by + j) * BASE_CELL) for j in range(BASE_N + 1)]
 
 
 def _gen_chunk(key):
+    """Finish generating a chunk now (blocking), reusing any columns already made."""
     bx, by = key[0] * BASE_N, key[1] * BASE_N
-    c = _base_chunks[key] = [[raw_height((bx + i) * BASE_CELL, (by + j) * BASE_CELL)
-                              for j in range(BASE_N + 1)] for i in range(BASE_N + 1)]
+    c = _partial.pop(key, [])
+    for i in range(len(c), BASE_N + 1):
+        c.append(_column(bx, by, i))
+    _base_chunks[key] = c
     _pending.discard(key)
     return c
 
@@ -180,10 +188,20 @@ def chunks_ready():
 
 
 def generate_pending(budget):
-    """Generate queued chunks for up to `budget` seconds."""
+    """Generate queued chunks for up to `budget` seconds, one column at a time
+    (a whole chunk takes longer than a frame)."""
     end = time.perf_counter() + budget
     while _pending and time.perf_counter() < end:
-        _gen_chunk(next(iter(_pending)))
+        key = next(iter(_pending))
+        if key in _base_chunks:
+            _pending.discard(key)
+            continue
+        cols = _partial.setdefault(key, [])
+        bx, by = key[0] * BASE_N, key[1] * BASE_N
+        while len(cols) <= BASE_N and time.perf_counter() < end:
+            cols.append(_column(bx, by, len(cols)))
+        if len(cols) > BASE_N:
+            _gen_chunk(key)
 
 
 def new_world(seed, world_type=0):
@@ -193,6 +211,7 @@ def new_world(seed, world_type=0):
     _, _, _, _shape, _params = WORLD_TYPES[world_type]
     _base_chunks.clear()
     _pending.clear()
+    _partial.clear()
     reset_terrain()
     # map shading bands follow this world's own height range (dunes vs mountains)
     rng = random.Random(seed)
@@ -275,6 +294,18 @@ def find_land(x, y):
             if h > SEA + 3 and abs(g(px + 15, py) - h) < 12 and abs(g(px, py + 15) - h) < 12:
                 return px, py
         r += 40 if r < 1000 else 150
+    return x, y
+
+
+def find_land_line(x, y):
+    """Like find_land, but only searches along the x axis (2D games stay on y)."""
+    def g(px):
+        return raw_height(px, y) + deform(px, y)
+    for d in range(0, 8000, 20):
+        for px in ((x + d, x - d) if d else (x,)):
+            h = g(px)
+            if h > SEA + 3 and abs(g(px + 15) - h) < 12:
+                return px, y
     return x, y
 
 

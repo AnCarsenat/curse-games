@@ -9,16 +9,19 @@ import os
 # Every key goes through an action name. Defaults = COMMON_KEYS + the layout,
 # and per-action overrides (in-game "Key bindings" menu or the JSON file) win.
 ACTIONS = [   # (action, description) - order used by the help and key menu
-    ("left",            "turn gun left (one step)"),
-    ("right",           "turn gun right (one step)"),
+    ("mode",            "switch MOVE / AIM / CAMERA"),
+    ("forward",         "move: drive fwd · aim: raise · camera: up"),
+    ("back",            "move: drive back · aim: lower · camera: down"),
+    ("left",            "move: turn · aim: yaw · camera: left"),
+    ("right",           "move: turn · aim: yaw · camera: right"),
+    ("yaw_left",        "aim left (one step)"),
+    ("yaw_right",       "aim right (one step)"),
     ("elev_up",         "raise barrel (one step)"),
     ("elev_down",       "lower barrel (one step)"),
     ("elev_up5",        "raise barrel 10 steps"),
     ("elev_down5",      "lower barrel 10 steps"),
     ("step_up",         "bigger aim step / zoom map in"),
     ("step_down",       "finer aim step / zoom map out"),
-    ("forward",         "drive forward"),
-    ("back",            "drive backward"),
     ("fire",            "fire"),
     ("charge_next",     "next charge"),
     ("charge_prev",     "previous charge"),
@@ -27,7 +30,7 @@ ACTIONS = [   # (action, description) - order used by the help and key menu
     ("fuse_up",         "fuse time +0.5 s"),
     ("unit_type",       "change unit type"),
     ("aim_gui",         "precision aiming dial"),
-    ("map",             "map: mini > full screen > off"),
+    ("map",             "maps: world + slice > full world > off"),
     ("graph",           "graph range/tof/firing table/off"),
     ("gauge",           "pitch/yaw gauge"),
     ("freecam",         "free camera"),
@@ -44,7 +47,8 @@ ACTION_IDS = {a for a, _ in ACTIONS}
 
 
 # locked in a duel once the shot of the turn is in the air
-GUN_ACTIONS = {"left", "right", "forward", "back", "elev_up", "elev_down", "elev_up5",
+GUN_ACTIONS = {"left", "right", "forward", "back", "yaw_left", "yaw_right",
+               "elev_up", "elev_down", "elev_up5",
                "elev_down5", "fire", "charge_next", "charge_prev", "shell_next",
                "fuse_down", "fuse_up", "unit_type"}
 
@@ -53,11 +57,11 @@ ENTER_CODES = (10, 13, curses.KEY_ENTER)
 
 
 COMMON_KEYS = {
-    "left": ["left"], "right": ["right"],
+    "yaw_left": ["left"], "yaw_right": ["right"], "mode": ["tab"],
     "elev_up": ["up"], "elev_down": ["down"], "elev_up5": ["pgup"], "elev_down5": ["pgdn"],
-    "step_up": ["+"], "step_down": ["-"],
+    "step_up": ["+", ";"], "step_down": ["-", ","],
     "fire": ["space", "f"], "charge_next": ["c"], "charge_prev": ["C"], "shell_next": ["l"],
-    "unit_type": ["tab"], "map": ["m"], "graph": ["g"], "gauge": ["p"], "freecam": ["v"],
+    "unit_type": ["t"], "map": ["m"], "graph": ["g"], "gauge": ["p"], "freecam": ["v"],
     "new_targets": ["n"], "repair": ["r"], "menu": ["esc"], "gun_menu": ["e"], "aim_gui": ["i"],
     "help": ["?", "h"],
 }

@@ -2,6 +2,8 @@
 import math
 
 from .config import DT, G, MAX_FLIGHT, WIND_PUSH
+
+MAX_SLOPE = 3.0     # steepest terrain rise assumed (m up per m across) for skipping checks
 from .world import height
 from .content import FUSES
 
@@ -18,6 +20,7 @@ class Projectile:
         self.result = None   # None while flying, then impact/airburst/lost
         self.trail = []
         self.surface = height   # predictions swap in a non-blocking version
+        self.clear = 0.0        # seconds during which the shell surely can't reach the ground
 
     @property
     def pos(self):
@@ -33,11 +36,21 @@ class Projectile:
         self.y += self.vy * DT
         self.z += self.vz * DT
         self.t += DT
-        surf = self.surface(self.x, self.y)
-        if self.z <= surf:
-            self.z = surf
-            self.result = "impact"
-        elif FUSES[self.shell.fuse](self):
+        self.clear -= DT
+        if self.clear <= 0:
+            surf = self.surface(self.x, self.y)
+            if self.z <= surf:
+                self.z = surf
+                self.result = "impact"
+                return self.result
+            # high above the ground: skip surface lookups until it could get close.
+            # Worst case the gap shrinks by c*t + G*t^2/2 (falling, gravity, terrain
+            # rising at MAX_SLOPE under it); solve for t and keep a safety margin.
+            c = -self.vz + MAX_SLOPE * math.hypot(self.vx, self.vy)
+            gap = self.z - surf - 2
+            if gap > 0:
+                self.clear = 0.7 * (math.sqrt(c * c + 2 * G * gap) - c) / G
+        if FUSES[self.shell.fuse](self):
             self.result = "airburst"
         elif self.t > MAX_FLIGHT:
             self.result = "lost"

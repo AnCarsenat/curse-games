@@ -1,7 +1,7 @@
 """artillery - tiny curses artillery sandbox.
 
 Run (from games/):  python3 -m artillery     or     python3 artillery
-Press ? in game for keys.
+Press ? in game for keys. Tab switches what ZQSD do: MOVE / AIM / CAMERA.
 
 Modes: Sandbox (free fire at targets) and Duel (1v1 pass and play, turn based).
 Wind (game settings, on by default) pushes shells; fire control ignores it.
@@ -13,6 +13,7 @@ Modules:
   game      state and rules       controls  keyboard handling (mixin)
   view      side view (mixin)     panels    maps, gauge, dial, tables, HUD (mixin)
   overlays  menus, help, dialogs  main      curses setup and main loop
+  colors    palette, colour on/off
 
 Extending: add entries to FUSES, SHELLS and GUNS in content.py.
   - A fuse is a function(projectile) -> bool (True = detonate in the air).

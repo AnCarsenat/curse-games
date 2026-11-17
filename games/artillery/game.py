@@ -3,10 +3,12 @@ import math
 import random
 
 from .config import CHUNK, DT, TIME_SCALE, WIND_MAX, WORLD, Y0
-from .world import chunk_of, find_land, generate_pending, height, is_water, make_crater, new_world
+from .world import (chunk_of, find_land, find_land_line, generate_pending, height, is_water,
+                    make_crater, new_world)
 from .content import GUNS
 from .entities import Explosion, Target, Unit
 from .keys import Keymap
+from . import save
 from .controls import ControlsMixin
 from .view import ViewMixin
 from .panels import PanelsMixin
@@ -26,6 +28,12 @@ class Game(ControlsMixin, ViewMixin, PanelsMixin, OverlaysMixin):
         self.relief_i = 1       # index into RELIEFS (vertical exaggeration)
         self.world_type = 0     # index into WORLD_TYPES used for the next new world
         self.aim = None         # precision dial: None closed, else "pitch" or "yaw"
+        self.entry = None       # number being typed in the dial
+        self.input_mode = "move"  # what the letter keys do: move / aim / camera (Tab)
+        self.display = "blocks"   # blocks / chars / mono (game settings > Display)
+        self.flat_next = False  # setting: next game is 2D (everything on the slice)
+        self.flat = False       # the current game is 2D
+        self.cam_dz = 0.0       # camera mode: vertical offset of the side view (m)
         self.aim_step = 1       # index into AIM_STEPS: step of the arrows and the dial
         self.map_mode = 1       # 0 off, 1 corner minimap, 2 full-screen map
         self.mapview = None     # full map: [centre x, centre y, width in metres]
@@ -38,6 +46,8 @@ class Game(ControlsMixin, ViewMixin, PanelsMixin, OverlaysMixin):
         self.keys = Keymap()
         self.acc = 0.0
         self.new_game("sandbox")
+        self.played = False     # nothing worth saving yet (set by firing / starting a game)
+        self.saved = save.read()   # last game, offered on the title screen
         self.say(self.keys.error or f"Welcome! {self.keys.label('help')}: all keys", 4)
 
     @property
@@ -53,15 +63,19 @@ class Game(ControlsMixin, ViewMixin, PanelsMixin, OverlaysMixin):
 
     def new_game(self, mode):
         self.mode = mode
-        new_world(random.randrange(1 << 30), self.world_type)
+        self.flat = self.flat_next
+        self.played, self.saved = True, None
+        self.seed = random.randrange(1 << 30)
+        new_world(self.seed, self.world_type)
         self.world_now = self.world_type
         self.map_cache = {}
         if self.map_mode == 2:
             self.map_mode = 1
         self.explored = set()   # chunks seen (units, impacts); the minimap covers them
-        self.aim = None
+        self.aim = self.entry = None
         self.projectiles, self.explosions = [], []
         self.freecam = False
+        self.input_mode = "move"
         self.new_wind()
         self.winner = None      # duel: end-of-game text
         self.handover = False   # duel: waiting for the next player to take the keyboard
@@ -69,7 +83,16 @@ class Game(ControlsMixin, ViewMixin, PanelsMixin, OverlaysMixin):
         self.report = ""        # duel: result of the last shot, shown at handover
         self.shots = 0
         self.ui = 0
-        if mode == "duel":
+        if mode == "duel" and self.flat:
+            x = random.uniform(450, 650)
+            p1 = Unit(GUNS[0], *find_land_line(x, Y0), "Player 1", 4)
+            p2 = Unit(GUNS[0], *find_land_line(WORLD - x, Y0), "Player 2", 5)
+            p1.az, p2.az = 0.0, 180.0
+            p2.flip = True
+            self.units, self.targets = [p1, p2], []
+            self.start_turn(0)
+            self.say("Duel (2D)", 2)
+        elif mode == "duel":
             x, dy = random.uniform(450, 650), random.uniform(-300, 300)
             p1 = Unit(GUNS[0], *find_land(x, Y0 + dy), "Player 1", 4)
             p2 = Unit(GUNS[0], *find_land(WORLD - x, Y0 - dy), "Player 2", 5)
@@ -80,17 +103,31 @@ class Game(ControlsMixin, ViewMixin, PanelsMixin, OverlaysMixin):
             self.start_turn(0)
             self.say("Duel", 2)
         else:
-            self.units = [Unit(GUNS[0], *find_land(300, Y0))]
+            self.units = [Unit(GUNS[0], *(find_land_line if self.flat else find_land)(300, Y0))]
             self.spawn_targets()
             self.say("Sandbox")
+
+    def continue_saved(self):
+        save.load(self, self.saved)
+        self.played, self.saved = True, None
+
+    def autosave(self):
+        """Save on quit, unless nothing happened (so a peek at the title keeps the old save)."""
+        if not self.played:
+            return
+        try:
+            save.save(self)
+        except OSError:
+            pass
 
     def start_turn(self, i):
         self.ui = i
         u = self.unit
         u.cooldown, u.fuel = 0.0, u.gun.fuel
-        self.aim = None
+        self.aim = self.entry = None
         self.turn_fired = False
         self.freecam = False
+        self.input_mode = "move"
         if self.map_mode == 2:
             self.map_mode = 1
         self.new_wind()
@@ -102,14 +139,14 @@ class Game(ControlsMixin, ViewMixin, PanelsMixin, OverlaysMixin):
             return
         a = random.uniform(0, 2 * math.pi)
         spd = random.uniform(0, WIND_MAX)
-        self.wind = (spd * math.cos(a), spd * math.sin(a))
+        self.wind = (spd * math.cos(a), 0.0 if self.flat else spd * math.sin(a))
 
     def drift_wind(self, rdt):
         """Sandbox: wind wanders slowly."""
         if not self.wind_on:
             return
         wx = self.wind[0] + random.gauss(0, 0.6) * rdt
-        wy = self.wind[1] + random.gauss(0, 0.6) * rdt
+        wy = 0.0 if self.flat else self.wind[1] + random.gauss(0, 0.6) * rdt
         spd = math.hypot(wx, wy)
         if spd > WIND_MAX:
             wx, wy = wx * WIND_MAX / spd, wy * WIND_MAX / spd
@@ -139,6 +176,12 @@ class Game(ControlsMixin, ViewMixin, PanelsMixin, OverlaysMixin):
 
     def spawn_targets(self):
         u = self.units[0]
+        if self.flat:           # everything on the line, east of the gun
+            xs = [u.x + random.uniform(400, 2000) for _ in range(6)]
+            xs += [u.x + random.uniform(3000, 9000) for _ in range(3)]
+            self.targets = [Target(*find_land_line(x, u.y)) for x in xs]
+            self.shots = 0
+            return
         spots = [(u.x + random.uniform(400, 2000), u.y + random.uniform(-1000, 1000)) for _ in range(6)]
         for _ in range(3):      # far targets for the long-range guns
             a, r = random.uniform(-0.6, 0.6), random.uniform(3000, 9000)
@@ -164,6 +207,7 @@ class Game(ControlsMixin, ViewMixin, PanelsMixin, OverlaysMixin):
             self.say(f"Reloading ({u.cooldown:.1f}s)")
             return
         self.projectiles.append(u.make_projectile(self.wind))
+        self.played = True
         u.cooldown = u.gun.reload
         self.shots += 1
         if self.duel:
@@ -171,7 +215,7 @@ class Game(ControlsMixin, ViewMixin, PanelsMixin, OverlaysMixin):
 
     # ---------------------------------------------------------- update
     def update(self, rdt):
-        generate_pending(0.004)     # a few terrain chunks per frame, never a long stall
+        generate_pending(0.008)     # terrain in small slices per frame, never a long stall
         if self.menu is not None or self.title is not None or self.handover:
             return              # game paused while configuring / handing over
         self.msg_t -= rdt
@@ -192,7 +236,7 @@ class Game(ControlsMixin, ViewMixin, PanelsMixin, OverlaysMixin):
                     self.detonate(p)
             for p in self.projectiles:
                 p.trail.append(p.pos)
-                del p.trail[:-40]
+                del p.trail[:-160]          # ~2 s of flight at normal speed
             self.projectiles = [p for p in self.projectiles if p.result is None]
         if (self.duel and self.turn_fired and not self.projectiles and not self.explosions
                 and not self.winner):

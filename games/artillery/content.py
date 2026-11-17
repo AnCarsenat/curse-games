@@ -2,7 +2,6 @@
 from dataclasses import dataclass
 
 from .config import MOVE_BUDGET
-from .world import height
 
 
 # ------------------------------------------------------------------ CONTENT
@@ -49,7 +48,7 @@ FUSES = {
     "impact": lambda p: False,
     "timed": lambda p: p.t >= p.fuse_time,
     # arms after 2 s, bursts when falling within 12 m of the ground
-    "proximity": lambda p: p.t > 2 and p.vz < 0 and p.z - height(p.x, p.y) < 12,
+    "proximity": lambda p: p.t > 2 and p.vz < 0 and p.z - p.surface(p.x, p.y) < 12,
 }
 
 

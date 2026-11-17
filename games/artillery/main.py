@@ -3,6 +3,7 @@ import curses
 import locale
 import time
 
+from . import colors
 from .game import Game
 
 
@@ -16,7 +17,15 @@ def main(scr):
     for i, c in enumerate([curses.COLOR_GREEN, curses.COLOR_YELLOW, curses.COLOR_RED,
                            curses.COLOR_CYAN, curses.COLOR_MAGENTA], start=1):
         curses.init_pair(i, c, -1)
+    colors.init()
     game = Game()
+    try:
+        loop(scr, game)
+    finally:
+        game.autosave()         # also on Ctrl+C
+
+
+def loop(scr, game):
     frame = 1 / 30
     last = time.perf_counter()
     next_frame = last
@@ -42,4 +51,7 @@ def main(scr):
 
 def run():
     locale.setlocale(locale.LC_ALL, "")
-    curses.wrapper(main)
+    try:
+        curses.wrapper(main)
+    except KeyboardInterrupt:
+        pass
